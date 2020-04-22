@@ -198,7 +198,6 @@
           name: '矩形点'
         }, featureStyle);
         gFeatureLayer.addFeature(fea);
-        console.log("=========>", feaId);
         recordParams(feaId, points);
       }
     });
@@ -214,10 +213,11 @@
     function removeFea(feaId) {
       gFeatureLayer.removeFeatureById(feaId);
     }
-
+    // 删除当前表格行元素
     $('body').on('click', '.delParam', function () {
       console.log("开始删除");
       removeFea($(this).attr('data-id'));
+      $(this).parent().parent().remove();
     })
   </script>
 </body>
