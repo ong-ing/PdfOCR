@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <link rel="stylesheet" href="layui/css/layui.css">
+  <link rel='stylesheet prefetch' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.css'>
+  <link rel="stylesheet" href="css/menu/style.css">
+  <!-- <script src='../../../jslib/gClass.js'></script>
+	<script src='../../../jslib/gConfig.js'></script>
+	<script src='../../../jslib/gUtil.js'></script>
+	<script src='../../../jslib/gGraph.js'></script>
+	<script src='../../../jslib/gGeometry.js'></script>
+	<script src='../../../jslib/gFeature.js'></script>
+    <script src='../../../jslib/gStyle.js'></script>
+    <script src="../../../jslib/gEdit.js"></script>
+	<script src='../../../jslib/gMap.js'></script>
+    <script src='../../../jslib/gLayer.js'></script>
+    <script src='../../../jslib/gControl.js'></script> -->
+  <script src='js/jquery-1.12.1.min.js'></script>
+  <script src="layui/layui.js"></script>
+  <script src='js/AILabel.pkg.min.js'></script>
+  <style>
+    #map {
+      width: 100%;
+      height: 600px;
+      background-color: #e2e2e2;
+      position: relative;
+      cursor: crosshair;
+      -moz-user-select: none;
+      /*火狐*/
+      -webkit-user-select: none;
+      /*webkit浏览器*/
+      -ms-user-select: none;
+      /*IE10*/
+      -khtml-user-select: none;
+      /*早期浏览器*/
+      user-select: none;
+    }
+
+    #menu {
+      width: 60px;
+      height: 330px;
+      background-color: #393D49;
+      position: absolute;
+      left: 30px;
+      top: 0px;
+      z-index: 99;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="layui-row">
+    <div class="layui-col-md12" style="text-align: center;">
+      <div class="layui-card">
+        <div class="layui-card-header">
+          <button type="button" class="layui-btn" id="test1">
+            <i class="layui-icon">&#xe67c;</i>上传图片
+          </button>
+        </div>
+        <div class="layui-card-body">
+          <div class="layui-row">
+            <div class="layui-col-md10">
+              <nav class="cd-stretchy-nav edit-content">
+                <a class="cd-nav-trigger" href="#0">
+                  <span aria-hidden="true"></span>
+                </a>
+                <ul id="menu">
+                  <a href="javascript:void(0);">
+                    <li class="icon fa  fa-crop" onclick="setMode('drawRect')"></li>
+                  </a>
+                  <a href="javascript:void(0);">
+                    <li class="icon fa fa-arrows" onclick="setMode('pan')"></li>
+                  </a>
+                  <a href="javascript:void(0);">
+                    <li class="icon fa fa-search-plus" onclick="setMode('pan')"></li>
+                  </a>
+                  <a href="javascript:void(0);">
+                    <li class="icon fa fa-search-minus"></li>
+                  </a>
+                  <a href="javascript:void(0);">
+                    <li class="icon fa fa-arrows-alt"></li>
+                  </a>
+                </ul>
+                <span aria-hidden="true" class="stretchy-nav-bg"></span>
+              </nav>
+              <div id="map"></div>
+            </div>
+            <div class="layui-col-md2" style="padding:20px;">
+              <table class="layui-table">
+                <colgroup>
+                  <col width="">
+                  <col width="">
+                  <col>
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>参数名</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="params"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    var params = [];
+    var imageLayer;
+    const mappingStyles = {
+      // 矩形绘制
+      drawRect: {
+        drawStyle: { strokeColor: '#FF5722', opacity: 1, lineWeight: 1 },
+        featureStyle: { strokeColor: '#5FB878', fillColor: '#5FB878', opacity: .3, lineWeight: 1 }
+      },
+      // 平移
+      pan: {
+        drawStyle: {},
+        featureStyle: {}
+      }
+    };
+    // 容器对象声明
+    let gMap = new AILabel.Map('map', { zoom: 4320, cx: 0, cy: 0, zoomMax: 650 * 10, zoomMin: 650 / 10, autoPan: true, drawZoom: true });
+    // 初始化设置样式为平移
+    setMode('pan');
+    // 矢量层实例\添加
+    let gFeatureLayer = new AILabel.Layer.Feature('featureLayer', { zIndex: 3, transparent: false });
+    gMap.addLayer(gFeatureLayer);
+
+    layui.use(['element', 'upload'], function () {
+      var element = layui.element;
+      var upload = layui.upload;
+      //执行实例
+      var uploadInst = upload.render({
+        elem: '#test1' //绑定元素
+        , before: function (obj) {
+          //将每次选择的文件追加到文件队列
+          var files = obj.pushFile();
+          obj.preview(function (index, file, result) {
+            inputFile(file);
+          });
+          return false;
+        }
+      });
+    })
+
+    // 选择文件
+    function inputFile(file) {
+      var reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = function (file) {
+        var image = new Image();
+        image.src = file.target.result;
+        image.onload = function () {
+
+          // 移除掉原先的图片层
+          gMap.removeLayer(imageLayer);
+          // 图片层实例\添加
+          imageLayer = new AILabel.Layer.Image('img', this.src, { w: this.width, h: this.height }, { zIndex: 1, grid: { rowCount: 3, columnCount: 3 } });
+          gMap.addLayer(imageLayer);
+        };
+      }
+    }
+
+    // 设置当前操作模式为‘drawRect’
+    function setMode(mode, color, size) {
+      const preCurrentMode = mode.indexOf('drawMask') === 0 ? 'drawMask' : mode;
+      const currentMode = preCurrentMode.indexOf('drawPolyline') === 0 ? 'drawPolyline' : preCurrentMode;
+      const drawStyle = mappingStyles[currentMode].drawStyle;
+      if (color) {
+        if (currentMode === 'drawPolyline') {
+          drawStyle.strokeColor = color;
+        }
+        else {
+          drawStyle.fillColor = color;
+        }
+      }
+      if (size) {
+        drawStyle.lineWeight = size;
+      }
+      gMap && gMap.setMode(currentMode, new AILabel.Style(drawStyle));
+    }
+
+    gMap.events.on('geometryDrawDone', function (type, points, options) {
+      // 生成元素唯一标志（时间戳）
+      const timestamp = new Date().getTime();
+      const cMode = gMap.getMode();
+      console.log('当前矩形点为', points);
+      const featureStyle = mappingStyles[cMode].featureStyle;
+      if (type === 'rect') {
+        var feaId = `feature-${timestamp}`;
+        let fea = new AILabel.Feature.Rect(feaId, points, {
+          name: '矩形点'
+        }, featureStyle);
+        gFeatureLayer.addFeature(fea);
+        console.log("=========>", feaId);
+        recordParams(feaId, points);
+      }
+    });
+
+    // 记录下当前框选的值
+    function recordParams(feaId, points) {
+      let param = JSON.stringify(points);
+      var html = '<tr><td>' + feaId + '</td><td><input type="hidden" value="' + param + '"</td><a href="javascript:void(0);" class="layui-btn layui-btn-xs delParam" data-id="' + feaId + '">删除</a></tr>';
+      $("#params").append(html);
+    }
+
+    // 删除指定的框选
+    function removeFea(feaId) {
+      gFeatureLayer.removeFeatureById(feaId);
+    }
+
+    $('body').on('click', '.delParam', function () {
+      console.log("开始删除");
+      removeFea($(this).attr('data-id'));
+    })
+  </script>
+</body>
+
+</html>

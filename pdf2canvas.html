@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        .content-center {
+            position: relative;
+        }
+
+        #preview {
+            position: absolute;
+        }
+
+        #canvas {
+            position: absolute;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container"><h1>PDF转图片</h1>
+    <div class="file fullwidth mt-2"><span class="file-cta"><input id="input_file" class="file-input" type="file"
+                                                                   accept="application/pdf"
+                                                                   onchange="loadPDF(this.files[0])">
+<span class="file-icon"><i class="fas fa-upload"></i></span><span class="file-button">选择一个PDF文件</span></span>
+        <span id="file_name" class="file-name">20200413-52 DOUALA 20GP.pdf</span></div>
+    <div class="content-center mt-2">
+        <div class="group">
+            <button class="button" onclick="prevPage()">
+                <i class="fa fa-arrow-left"></i><span>上一页</span></button>
+            <button class="button" onclick="nextPage()">
+                <span>下一页</span>
+                <i class="fa fa-arrow-right"></i></button>
+        </div>
+        <div id="out_type" class="group">
+            <button class="button primary">
+                <span>JPG</span></button>
+            <button class="button">
+                <span>PNG</span></button>
+        </div>
+        <button class="button primary" onclick="save()">
+            <span>保存本页</span></button>
+        <button class="button primary" onclick="saveAll()">
+            <span>全部保存</span></button>
+    </div>
+    <p id="page_num">页码 : 1 / 1</p>
+    <div class="content-center mt-2">
+        <canvas id="preview" class="bordered" style="border:2px solid red;"></canvas>
+        <canvas id="canvas" class="bordered" style="border:2px solid green;"></canvas>
+    </div>
+</div>
+<script src="js/jquery-1.12.1.min.js" type="text/javascript"></script>
+<script src="js/jcanvas.min.js" type="text/javascript"></script>
+<script src='https://cdn.bootcss.com/pdf.js/2.2.228/pdf.min.js' type='text/javascript'></script>
+<script src='js/canvas2image.js.js' type='text/javascript'></script>
+<script>
+    $("#preview").hide();
+    var WIDTH, HEIGHT;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.bootcss.com/pdf.js/2.2.228/pdf.worker.min.js';
+    const page_num = document.getElementById('page_num');
+    const out_type = document.getElementById('out_type');
+    let pdfFile, pdf, pageNum, preview, context;
+    preview = document.getElementById('preview');
+    context = preview.getContext('2d');
+    out_type.querySelectorAll('.button').forEach(function (btn) {
+        btn.onclick = function () {
+            out_type.querySelector('.primary').classList.remove('primary');
+            btn.classList.add('primary');
+        }
+    });
+
+    // 加载PDF文件
+    function loadPDF(file) {
+        pdfFile = file;
+        file_name.innerHTML = file.name;
+
+        let reader = new FileReader();
+        reader.onload = (e) => showPDF(e.target.result);
+        reader.readAsDataURL(file);
+    }
+
+    // 预览PDF
+    function showPDF(url) {
+        console.log("预览PDF")
+        let loadingTask = pdfjsLib.getDocument(url);
+        loadingTask.promise.then(function (doc) {
+            pdf = doc;
+            pageNum = 1;
+            preview.hidden = false;
+            readerPage()
+        }, function (reason) {
+            alert(reason)
+        });
+    }
+
+    // 预览上一页
+    function prevPage() {
+        if (pageNum <= 1) {
+            return;
+        }
+        pageNum--;
+        readerPage()
+    }
+
+    //预览下一页
+    function nextPage() {
+        if (pageNum >= pdf.numPages) {
+            return;
+        }
+        pageNum++;
+        readerPage()
+    }
+
+    //渲染页面
+    function readerPage(callback) {
+        pdf.getPage(pageNum).then(function (page) {
+            let scale = 1.5;
+            let viewport = page.getViewport({scale: scale});
+
+            HEIGHT = preview.height = viewport.height;
+            WIDTH = preview.width = viewport.width;
+
+            $("#preview").show();
+            // 开启画图功能
+            drawPen();
+
+            let renderContext = {
+                canvasContext: context,
+                viewport: viewport
+            };
+            page.render(renderContext).promise.then(callback);
+        });
+        page_num.innerText = `页码 : ${pageNum} / ${pdf.numPages}`;
+    }
+
+    // 保存当前页
+    function save() {
+        let a = document.createElement('a');
+        let event = new MouseEvent('click');
+        let type = out_type.querySelector('.primary').innerText.toLowerCase();
+        a.download = pdfFile.name + '-' + pageNum + '.' + type;
+        a.href = preview.toDataURL(type === 'png' ? 'image/png' : 'image/jpeg');
+        a.dispatchEvent(event)
+    }
+
+    //保存全部页面
+    function saveAll() {
+        pageNum = 1;
+        savePage()
+    }
+
+    function savePage() {
+        if (pageNum > pdf.numPages) {
+            alert('全部保存成功');
+            return
+        }
+
+        readerPage(function () {
+            save();
+            pageNum++;
+            savePage();
+        });
+    }
+
+    var layer = 0;
+    CanvasExt = {
+        drawRect: function (canvasId, penColor, strokeWidth) {
+            var that = this;
+            that.penColor = penColor;
+            that.penWidth = strokeWidth;
+
+            var canvas = document.getElementById(canvasId);
+            console.log("长宽", WIDTH, HEIGHT)
+            canvas.width = WIDTH
+            canvas.height = HEIGHT
+            //canvas 的矩形框
+            var canvasRect = canvas.getBoundingClientRect();
+            //矩形框的左上角坐标
+            var canvasLeft = canvasRect.left;
+            var canvasTop = canvasRect.top;
+
+            var layerIndex = layer;
+            var layerName = "layer";
+            var x = 0;
+            var y = 0;
+
+            //鼠标点击按下事件，画图准备
+            canvas.onmousedown = function (e) {
+                //设置画笔颜色和宽度
+                var color = that.penColor;
+                var penWidth = that.penWidth;
+
+                layerIndex++;
+                layer++;
+                layerName += layerIndex;
+                // 防止document滚动后canvas坐标漂移
+                canvasRect = canvas.getBoundingClientRect();
+                canvasLeft = canvasRect.left;
+                canvasTop = canvasRect.top;
+                x = e.clientX - canvasLeft;
+                y = e.clientY - canvasTop;
+
+                $("#" + canvasId).addLayer({
+                    type: 'rectangle',
+                    strokeStyle: color,
+                    strokeWidth: penWidth,
+                    name: layerName,
+                    fromCenter: false,
+                    x: x, y: y,
+                    width: 1,
+                    height: 1
+                });
+
+                $("#" + canvasId).drawLayers();
+                $("#" + canvasId).saveCanvas();
+                //鼠标移动事件，画图
+                canvas.onmousemove = function (e) {
+                    width = e.clientX - canvasLeft - x;
+                    height = e.clientY - canvasTop - y;
+
+                    $("#" + canvasId).removeLayer(layerName);
+
+                    $("#" + canvasId).addLayer({
+                        type: 'rectangle',
+                        strokeStyle: color,
+                        strokeWidth: penWidth,
+                        name: layerName,
+                        fromCenter: false,
+                        x: x, y: y,
+                        width: width,
+                        height: height
+                    });
+
+                    $("#" + canvasId).drawLayers();
+                }
+            };
+
+            canvas.onmouseup = function (e) {
+
+                var color = that.penColor;
+                var penWidth = that.penWidth;
+
+                canvas.onmousemove = null;
+
+                // 防止document滚动后canvas坐标漂移
+                canvasRect = canvas.getBoundingClientRect();
+                canvasLeft = canvasRect.left;
+                canvasTop = canvasRect.top;
+
+                width = e.clientX - canvasLeft - x;
+                height = e.clientY - canvasTop - y;
+
+                $("#" + canvasId).removeLayer(layerName);
+
+                $("#" + canvasId).addLayer({
+                    type: 'rectangle',
+                    strokeStyle: color,
+                    strokeWidth: penWidth,
+                    name: layerName,
+                    fromCenter: false,
+                    x: x, y: y,
+                    width: width,
+                    height: height
+                });
+
+                $("#" + canvasId).drawLayers();
+                $("#" + canvasId).saveCanvas();
+            }
+        }
+    };
+
+    function drawPen() {
+        var color = "red";
+        var width = 1;
+        CanvasExt.drawRect("canvas", color, width);
+    }
+</script>
+</body>
+
+</html>
