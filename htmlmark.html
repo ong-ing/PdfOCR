@@ -7,24 +7,13 @@
   <link rel="stylesheet" href="layui/css/layui.css">
   <link rel='stylesheet prefetch' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.css'>
   <link rel="stylesheet" href="css/menu/style.css">
-  <!-- <script src='../../../jslib/gClass.js'></script>
-	<script src='../../../jslib/gConfig.js'></script>
-	<script src='../../../jslib/gUtil.js'></script>
-	<script src='../../../jslib/gGraph.js'></script>
-	<script src='../../../jslib/gGeometry.js'></script>
-	<script src='../../../jslib/gFeature.js'></script>
-    <script src='../../../jslib/gStyle.js'></script>
-    <script src="../../../jslib/gEdit.js"></script>
-	<script src='../../../jslib/gMap.js'></script>
-    <script src='../../../jslib/gLayer.js'></script>
-    <script src='../../../jslib/gControl.js'></script> -->
   <script src='js/jquery-1.12.1.min.js'></script>
   <script src="layui/layui.js"></script>
   <script src='js/AILabel.pkg.min.js'></script>
   <style>
     #map {
       width: 100%;
-      height: 600px;
+      height: 650px;
       background-color: #e2e2e2;
       position: relative;
       cursor: crosshair;
@@ -41,12 +30,18 @@
 
     #menu {
       width: 60px;
-      height: 330px;
+      height: 280px;
       background-color: #393D49;
       position: absolute;
       left: 30px;
       top: 0px;
       z-index: 99;
+    }
+
+    #tableDiv {
+      height: 650px;
+      padding: 20px;
+      overflow-y: scroll;
     }
   </style>
 </head>
@@ -56,9 +51,12 @@
     <div class="layui-col-md12" style="text-align: center;">
       <div class="layui-card">
         <div class="layui-card-header">
-          <button type="button" class="layui-btn" id="test1">
+          <a type="button" class="layui-btn" id="upload">
             <i class="layui-icon">&#xe67c;</i>上传图片
-          </button>
+          </a>
+          <a id="commitParams" type="button" class="layui-btn layui-btn-normal" style="float:right;margin:2px 80px;">
+            <i class="layui-icon">&#xe605;</i>提交
+          </a>
         </div>
         <div class="layui-card-body">
           <div class="layui-row">
@@ -75,20 +73,20 @@
                     <li class="icon fa fa-arrows" onclick="setMode('pan')"></li>
                   </a>
                   <a href="javascript:void(0);">
-                    <li class="icon fa fa-search-plus" onclick="setMode('pan')"></li>
+                    <li class="icon fa fa-search-plus" onclick="setScale(1)"></li>
                   </a>
                   <a href="javascript:void(0);">
-                    <li class="icon fa fa-search-minus"></li>
+                    <li class="icon fa fa-search-minus" onclick="setScale(-1)"></li>
                   </a>
                   <a href="javascript:void(0);">
-                    <li class="icon fa fa-arrows-alt"></li>
+                    <li class="icon fa fa-arrows-alt" onclick="setScale(0)"></li>
                   </a>
                 </ul>
                 <span aria-hidden="true" class="stretchy-nav-bg"></span>
               </nav>
               <div id="map"></div>
             </div>
-            <div class="layui-col-md2" style="padding:20px;">
+            <div id="tableDiv" class="layui-col-md2">
               <table class="layui-table">
                 <colgroup>
                   <col width="">
@@ -109,14 +107,21 @@
       </div>
     </div>
   </div>
+
   <script>
     var params = [];
+    // 图片层
     var imageLayer;
+    // 初始的缩放比例
+    var originZoom = 4320;
+    // 矢量涂层为全局，若已存在则直接使用，不存在则新键
+    var gFeatureLayer;
+    // 画图的样式配置
     const mappingStyles = {
       // 矩形绘制
       drawRect: {
         drawStyle: { strokeColor: '#FF5722', opacity: 1, lineWeight: 1 },
-        featureStyle: { strokeColor: '#5FB878', fillColor: '#5FB878', opacity: .3, lineWeight: 1 }
+        featureStyle: { strokeColor: "#5FB878", fillColor: "#5FB878", opacity: .3, lineWeight: 1 }
       },
       // 平移
       pan: {
@@ -125,19 +130,14 @@
       }
     };
     // 容器对象声明
-    let gMap = new AILabel.Map('map', { zoom: 4320, cx: 0, cy: 0, zoomMax: 650 * 10, zoomMin: 650 / 10, autoPan: true, drawZoom: true });
-    // 初始化设置样式为平移
-    setMode('pan');
-    // 矢量层实例\添加
-    let gFeatureLayer = new AILabel.Layer.Feature('featureLayer', { zIndex: 3, transparent: false });
-    gMap.addLayer(gFeatureLayer);
+    let gMap = new AILabel.Map('map', { zoom: originZoom, cx: 0, cy: 0, zoomMax: 650 * 10, zoomMin: 650 / 10, autoPan: true, drawZoom: true });
 
     layui.use(['element', 'upload'], function () {
       var element = layui.element;
       var upload = layui.upload;
       //执行实例
       var uploadInst = upload.render({
-        elem: '#test1' //绑定元素
+        elem: '#upload' //绑定元素
         , before: function (obj) {
           //将每次选择的文件追加到文件队列
           var files = obj.pushFile();
@@ -151,17 +151,26 @@
 
     // 选择文件
     function inputFile(file) {
+      $("#upload").hide();
       var reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = function (file) {
         var image = new Image();
         image.src = file.target.result;
         image.onload = function () {
-
+          // 防止重复添加
+          if (gFeatureLayer == null || gFeatureLayer == undefined) {
+            // 矢量层实例\添加
+            gFeatureLayer = new AILabel.Layer.Feature('featureLayer', { zIndex: 3, transparent: false });
+          }
+          // 初始化设置样式为平移
+          setMode('pan');
+          // 在容器上新增一层矢量图层
+          gMap.addLayer(gFeatureLayer);
           // 移除掉原先的图片层
           gMap.removeLayer(imageLayer);
           // 图片层实例\添加
-          imageLayer = new AILabel.Layer.Image('img', this.src, { w: this.width, h: this.height }, { zIndex: 1, grid: { rowCount: 3, columnCount: 3 } });
+          imageLayer = new AILabel.Layer.Image('img', this.src, { w: this.width, h: this.height }, { zIndex: 1 });
           gMap.addLayer(imageLayer);
         };
       }
@@ -169,6 +178,9 @@
 
     // 设置当前操作模式为‘drawRect’
     function setMode(mode, color, size) {
+      if (gFeatureLayer == null || gFeatureLayer == undefined) {
+        return;
+      }
       const preCurrentMode = mode.indexOf('drawMask') === 0 ? 'drawMask' : mode;
       const currentMode = preCurrentMode.indexOf('drawPolyline') === 0 ? 'drawPolyline' : preCurrentMode;
       const drawStyle = mappingStyles[currentMode].drawStyle;
@@ -187,10 +199,10 @@
     }
 
     gMap.events.on('geometryDrawDone', function (type, points, options) {
+      console.log("绘制完成");
       // 生成元素唯一标志（时间戳）
       const timestamp = new Date().getTime();
       const cMode = gMap.getMode();
-      console.log('当前矩形点为', points);
       const featureStyle = mappingStyles[cMode].featureStyle;
       if (type === 'rect') {
         var feaId = `feature-${timestamp}`;
@@ -205,19 +217,74 @@
     // 记录下当前框选的值
     function recordParams(feaId, points) {
       let param = JSON.stringify(points);
-      var html = '<tr><td>' + feaId + '</td><td><input type="hidden" value="' + param + '"</td><a href="javascript:void(0);" class="layui-btn layui-btn-xs delParam" data-id="' + feaId + '">删除</a></tr>';
+      var html = '<tr class="param"><td><input type="text" class="layui-input" name="paramName" value=""/></td><td><input type="hidden" value=\'' + param + '\'/><a href="javascript:void(0);" class="layui-btn layui-btn-xs delParam" data-id="' + feaId + '">删除</a></tr>';
       $("#params").append(html);
     }
 
     // 删除指定的框选
     function removeFea(feaId) {
+      var fea = gFeatureLayer.getFeatureById(feaId);
       gFeatureLayer.removeFeatureById(feaId);
     }
     // 删除当前表格行元素
     $('body').on('click', '.delParam', function () {
-      console.log("开始删除");
       removeFea($(this).attr('data-id'));
       $(this).parent().parent().remove();
+    })
+
+    // 设置图像缩放
+    function setScale(option) {
+      if (gFeatureLayer == null || gFeatureLayer == undefined) {
+        return;
+      }
+      switch (option) {
+        case 0:
+          // 平铺比例
+          gMap.setCenter(0, 0);
+          gMap.centerAndZoom(gMap.getCenter(), originZoom);
+        case 1:
+          // 放大
+          gMap.setCenter(0, 0);
+          gMap.centerAndZoom(gMap.getCenter(), Math.round(gMap.getZoom() / 2));
+          break;
+        case -1:
+          // 缩小
+          gMap.setCenter(0, 0);
+          gMap.centerAndZoom(gMap.getCenter(), gMap.getZoom() * 2);
+      }
+    }
+
+    // 鼠标移入事件
+    $("body").on("mouseenter", ".param", function () {
+      var feaId = $(this).find('a').eq(0).attr('data-id');
+      var feaHover = gFeatureLayer.getFeatureById(feaId);
+      // 修改为激活状态并刷新矢量图层
+      feaHover.activeStatus = true;
+      gFeatureLayer.renew();
+    });
+    // 鼠标移出事件
+    $("body").on("mouseleave", ".param", function () {
+      var feaId = $(this).find('a').eq(0).attr('data-id');
+      var feaHover = gFeatureLayer.getFeatureById(feaId);
+      // 移除激活状态并刷新矢量图层
+      feaHover.activeStatus = false;
+      gFeatureLayer.renew();
+    });
+
+    // 提交数据
+    $("#commitParams").on('click', function () {
+      var params = [];
+      $("#params").find('input[name=paramName]').each(function () {
+        var name = $(this).val();
+        if (name == '' || name == null || name == undefined) {
+          console.log('参数名不能为空');
+          return;
+        }
+        var param = {};
+        param['name'] = name
+        param['coordinate'] = $(this).parent().siblings('td').children('input[type=hidden]').val();
+        params.push(param);
+      })
     })
   </script>
 </body>
